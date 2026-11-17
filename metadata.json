@@ -1,0 +1,6 @@
+{
+  "name": "TicketCore API Workbench",
+  "description": "API RESTful de Sistema de Tickets e Usuários com autenticação JWT, RBAC, auditoria de código Flask e console interativo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
