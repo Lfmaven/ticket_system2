@@ -255,6 +255,16 @@ export function verifyTicketSignature(
 
 ---
 
+## Segurança e Code Scanning Alerts
+
+O repositório inclui proteção contra vulnerabilidades OWASP e pipelines automatizados de análise estática:
+- **CodeQL (`/.github/workflows/codeql.yml`)**: análise SAST com as suítes `security-extended` e `security-and-quality` gerando alertas diretamente na aba **Security → Code scanning** do GitHub.
+- **Security Audit CI (`/.github/workflows/security-audit.yml`)**: verifica tipagem estrita, build de produção e vulnerabilidades em dependências (`npm audit --omit=dev --audit-level=high`).
+- **Dependabot (`/.github/dependabot.yml`)**: atualizações automáticas semanais de segurança para `npm` e `github-actions`.
+- **Controles na API**: ausência de segredos hardcoded (CSPRNG runtime quando env não definida), proteção **SSRF** (`CWE-918`) com validação DNS/IP, proteção contra **CSV Formula Injection** (`CWE-1236`), lockout contra força bruta (`CWE-307`), remoção de `X-Powered-By` (`CWE-200`) e cabeçalhos `CSP`/`HSTS`/`Permissions-Policy`. Consulte [`SECURITY.md`](SECURITY.md).
+
+---
+
 ## Autoria e Propriedade Intelectual
 
 Desenvolvido e mantido por **Lfmaven** — [`https://github.com/Lfmaven/ticket_system`](https://github.com/Lfmaven/ticket_system).  

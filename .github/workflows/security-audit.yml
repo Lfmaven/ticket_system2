@@ -1,0 +1,38 @@
+name: Security Audit & Dependency Gate
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
+
+jobs:
+  security-checks:
+    name: Typecheck, Build & Dependency Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript Strict Check
+        run: npm run lint
+
+      - name: Production Build Verification
+        run: npm run build
+
+      - name: Generate Lockfile & Audit Production Dependencies
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          npm audit --omit=dev --audit-level=high

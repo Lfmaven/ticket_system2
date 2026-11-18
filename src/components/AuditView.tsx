@@ -1,6 +1,39 @@
 import { useState } from 'react';
 import { AUDIT_FINDINGS, type AuditFinding } from '../data/auditAndFlask';
 
+const HARDENED_CONTROLS = [
+  {
+    cwe: 'CWE-798',
+    controle: 'Zero Segredos Hardcoded',
+    detalhe: 'Chaves JWT via variáveis de ambiente ou CSPRNG runtime (.runtime-keys.json 0600).',
+  },
+  {
+    cwe: 'CWE-918',
+    controle: 'SSRF Guard em Webhooks',
+    detalhe: 'Exige HTTPS, bloqueia IPs privados/metadata, valida DNS e bloqueia redirecionamentos.',
+  },
+  {
+    cwe: 'CWE-1236',
+    controle: 'Proteção CSV Injection',
+    detalhe: 'Neutraliza prefixos =, +, -, @, tab e CR antes de gerar células CSV.',
+  },
+  {
+    cwe: 'CWE-307',
+    controle: 'Bloqueio Força Bruta',
+    detalhe: 'Lockout temporário após 5 falhas de login + rate limit com limpeza automática.',
+  },
+  {
+    cwe: 'CWE-693 / 200',
+    controle: 'Headers HTTP & CSP',
+    detalhe: 'x-powered-by desabilitado, CSP estrito em produção, HSTS e Permissions-Policy.',
+  },
+  {
+    cwe: 'GitHub SAST',
+    controle: 'CodeQL & Dependabot',
+    detalhe: 'Workflows .github/workflows/codeql.yml, security-audit.yml e dependabot.yml ativos.',
+  },
+];
+
 export function AuditView() {
   const [filterCat, setFilterCat] = useState<string>('Todas');
 
@@ -25,6 +58,33 @@ export function AuditView() {
 
   return (
     <div className="space-y-6">
+      {/* Code Scanning & Security Hardening Matrix */}
+      <section className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+        <div className="border-b border-slate-200 px-6 py-4">
+          <h2 className="text-base font-semibold text-slate-900">
+            Blindagem de Segurança & Code Scanning Alerts
+          </h2>
+          <p className="mt-1 text-xs text-slate-600">
+            Controles aplicados para zerar alertas SAST/CodeQL e workflows de análise contínua configurados em <code className="font-mono text-slate-800">.github/workflows/</code>.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 divide-y divide-slate-200 md:grid-cols-2 lg:grid-cols-3 md:divide-x md:divide-y-0">
+          {HARDENED_CONTROLS.map((ctrl) => (
+            <div key={ctrl.cwe} className="p-4 border-b border-slate-100 md:border-b-0">
+              <p className="font-mono text-xs font-semibold text-emerald-700">
+                {ctrl.cwe} · Protegido
+              </p>
+              <h3 className="mt-1 text-sm font-semibold text-slate-900">
+                {ctrl.controle}
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                {ctrl.detalhe}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="rounded-lg border border-slate-200 bg-white p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>

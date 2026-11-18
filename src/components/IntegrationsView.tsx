@@ -73,8 +73,8 @@ export function IntegrationsView({
   const [copiedSecret, setCopiedSecret] = useState(false);
 
   // Webhook creation state
-  const [whName, setWhName] = useState('Receptor Local Loopback');
-  const [whUrl, setWhUrl] = useState(`${baseUrl}/webhooks/sink-echo`);
+  const [whName, setWhName] = useState('Receptor Sandbox Seguro');
+  const [whUrl, setWhUrl] = useState('internal://sink-echo');
   const [whEvents, setWhEvents] = useState<
     Array<Exclude<WebhookEventType, 'webhook.test'>>
   >(['ticket.created', 'ticket.status_changed', 'ticket.commented']);
@@ -578,11 +578,11 @@ print(resp.json()["ticket"]["codigo"])`;
                     htmlFor="wh-url"
                     className="block text-xs font-medium text-slate-700"
                   >
-                    URL receptora (POST)
+                    URL receptora (HTTPS ou internal://sink-echo)
                   </label>
                   <input
                     id="wh-url"
-                    type="url"
+                    type="text"
                     required
                     value={whUrl}
                     onChange={(e) => setWhUrl(e.target.value)}

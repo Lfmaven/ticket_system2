@@ -1,4 +1,11 @@
-import { signWebhookPayload } from './security.ts';
+/**
+ * @project Lfmaven/ticket_system
+ * @author Lfmaven (https://github.com/Lfmaven/ticket_system)
+ */
+import {
+  assertSafeOutboundWebhookUrl,
+  signWebhookPayload,
+} from './security.ts';
 import { loadDb, newId, saveDb } from './store.ts';
 import type {
   WebhookDeliveryLog,
@@ -27,26 +34,43 @@ async function deliverToTarget(
   let success = false;
   let responsePreview = '';
 
-  try {
-    const res = await fetch(webhook.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Lfmaven-TicketSystem-Webhooks/1.2',
-        'X-TicketCore-Event': event,
-        'X-TicketCore-Delivery': deliveryId,
-        'X-TicketCore-Signature': signature,
-      },
-      body: bodyJson,
-      signal: AbortSignal.timeout(4000),
+  if (webhook.url === 'internal://sink-echo') {
+    statusCode = 200;
+    success = true;
+    responsePreview = JSON.stringify({
+      received: true,
+      mode: 'internal-sandbox-sink',
+      event,
+      deliveryId,
+      signatureVerified: Boolean(signature),
+      receivedAt: new Date().toISOString(),
     });
-    statusCode = res.status;
-    success = res.ok;
-    const text = await res.text().catch(() => '');
-    responsePreview = text.slice(0, 200) || res.statusText;
-  } catch (err) {
-    responsePreview =
-      err instanceof Error ? err.message.slice(0, 200) : 'Erro de rede ao entregar webhook';
+  } else {
+    try {
+      const safeUrl = await assertSafeOutboundWebhookUrl(webhook.url);
+      const res = await fetch(safeUrl.toString(), {
+        method: 'POST',
+        redirect: 'error',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Lfmaven-TicketSystem-Webhooks/1.2',
+          'X-TicketCore-Event': event,
+          'X-TicketCore-Delivery': deliveryId,
+          'X-TicketCore-Signature': signature,
+        },
+        body: bodyJson,
+        signal: AbortSignal.timeout(4000),
+      });
+      statusCode = res.status;
+      success = res.ok;
+      const text = await res.text().catch(() => '');
+      responsePreview = text.slice(0, 200) || res.statusText;
+    } catch (err) {
+      responsePreview =
+        err instanceof Error
+          ? err.message.slice(0, 200)
+          : 'Erro de rede ou bloqueio SSRF ao entregar webhook';
+    }
   }
 
   const durationMs = Number((performance.now() - start).toFixed(1));
@@ -93,7 +117,8 @@ export async function dispatchWebhookTest(
   webhook: WebhookRecord,
 ): Promise<WebhookDeliveryLog> {
   return deliverToTarget(webhook, 'webhook.test', {
-    message: 'Evento de teste disparado manualmente pelo TicketCore API Workbench.',
+    message:
+      'Evento de teste disparado manualmente pelo Lfmaven/ticket_system.',
     webhookId: webhook.id,
     webhookNome: webhook.nome,
   });

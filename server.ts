@@ -9,20 +9,41 @@ import path from 'node:path';
 import { createApiRouter } from './server/routes.ts';
 import { loadDb } from './server/store.ts';
 
+function resolveCorsOrigin(reqOrigin: string | undefined): string | null {
+  const configured = process.env.CORS_ALLOWED_ORIGINS?.trim();
+  if (!configured || configured === '*') {
+    return reqOrigin || '*';
+  }
+  const allowlist = configured.split(',').map((o) => o.trim());
+  if (reqOrigin && allowlist.includes(reqOrigin)) {
+    return reqOrigin;
+  }
+  return null;
+}
+
 async function startServer() {
   const app = express();
   const port = Number(process.env.PORT) || 3000;
   const startedAt = Date.now();
+  const isProd = process.env.NODE_ENV === 'production';
 
+  // Eliminate Express technology disclosure (CWE-200)
+  app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
   // Ensure initial DB seed exists on startup
   loadDb();
 
-  // CORS + Security headers + response timing for cross-origin external apps
+  // CORS + Security headers + response timing
   app.use((req, res, next) => {
     const start = performance.now();
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const allowedOrigin = resolveCorsOrigin(req.headers.origin);
+    if (allowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+      if (allowedOrigin !== '*') {
+        res.setHeader('Vary', 'Origin');
+      }
+    }
     res.setHeader(
       'Access-Control-Allow-Methods',
       'GET, POST, PATCH, PUT, DELETE, OPTIONS',
@@ -35,9 +56,37 @@ async function startServer() {
       'Access-Control-Expose-Headers',
       'X-Response-Time, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Content-Disposition',
     );
+
+    // Hardened HTTP security headers (CWE-693)
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-DNS-Prefetch-Control', 'off');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    res.setHeader(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=()',
+    );
+    if (isProd) {
+      res.setHeader(
+        'Strict-Transport-Security',
+        'max-age=31536000; includeSubDomains',
+      );
+      res.setHeader(
+        'Content-Security-Policy',
+        [
+          "default-src 'self'",
+          "script-src 'self'",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "font-src 'self' https://fonts.gstatic.com",
+          "img-src 'self' data:",
+          "connect-src 'self'",
+          "frame-ancestors 'self'",
+          "object-src 'none'",
+          "base-uri 'self'",
+        ].join('; '),
+      );
+    }
     res.setHeader('X-Service-Author', 'Lfmaven/ticket_system');
 
     if (req.method === 'OPTIONS') {
@@ -56,7 +105,7 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json({ limit: '1mb' }));
+  app.use(express.json({ limit: '256kb' }));
 
   // Malformed JSON error handler
   app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
@@ -95,7 +144,7 @@ async function startServer() {
   const apiRouter = createApiRouter();
   app.use('/api/v1', apiRouter);
 
-  if (process.env.NODE_ENV !== 'production') {
+  if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },

@@ -5,15 +5,19 @@
 import { Router, type Response } from 'express';
 import { z } from 'zod';
 import {
+  checkLoginLockout,
+  clearFailedLogins,
   generateApiKey,
   generateWebhookSecret,
   hashPassword,
   issueTokenPair,
   rateLimit,
+  recordFailedLogin,
   requireAuth,
   requireRoles,
   requireScope,
   setApiKeyResolver,
+  validateWebhookUrlSyntax,
   verifyPassword,
   verifyRefreshToken,
   type AuthenticatedRequest,
@@ -129,11 +133,17 @@ const createWebhookSchema = z.object({
   url: z
     .string()
     .trim()
-    .url('Informe uma URL HTTP/HTTPS válida.')
-    .refine(
-      (u) => u.startsWith('http://') || u.startsWith('https://'),
-      'A URL do webhook deve iniciar com http:// ou https://.',
-    ),
+    .min(8, 'Informe uma URL HTTPS válida ou internal://sink-echo.')
+    .max(512, 'URL excede o limite permitido.')
+    .superRefine((u, ctx) => {
+      const check = validateWebhookUrlSyntax(u);
+      if (!check.valid) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: check.reason || 'URL de webhook inválida.',
+        });
+      }
+    }),
   events: z
     .array(
       z.enum([
@@ -354,9 +364,22 @@ export function createApiRouter(): Router {
       return;
     }
 
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const lockoutSeconds = checkLoginLockout(parsed.data.email, clientIp);
+    if (lockoutSeconds > 0) {
+      res.setHeader('Retry-After', String(lockoutSeconds));
+      res.status(429).json({
+        error: 'account_temporarily_locked',
+        message: `Muitas tentativas inválidas. Tente novamente em ${lockoutSeconds}s.`,
+        retryAfterSeconds: lockoutSeconds,
+      });
+      return;
+    }
+
     const db = loadDb();
     const user = db.users.find((u) => u.email === parsed.data.email);
     if (!user || !verifyPassword(parsed.data.senha, user.senhaHash)) {
+      recordFailedLogin(parsed.data.email, clientIp);
       res.status(401).json({
         error: 'invalid_credentials',
         message: 'Credenciais inválidas.',
@@ -372,6 +395,7 @@ export function createApiRouter(): Router {
       return;
     }
 
+    clearFailedLogins(parsed.data.email, clientIp);
     user.lastLoginAt = new Date().toISOString();
     user.updatedAt = user.lastLoginAt;
     saveDb(db);
@@ -631,15 +655,18 @@ export function createApiRouter(): Router {
 
   function escapeCsvCell(value: string | number | boolean | null | undefined): string {
     const raw = value === null || value === undefined ? '' : String(value);
-    if (/[",\r\n;]/.test(raw)) {
-      return `"${raw.replace(/"/g, '""')}"`;
+    // Neutralize spreadsheet formula injection (CWE-1236)
+    const formulaSafe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+    if (/[",\r\n;]/.test(formulaSafe)) {
+      return `"${formulaSafe.replace(/"/g, '""')}"`;
     }
-    return raw;
+    return formulaSafe;
   }
 
   router.get(
     '/tickets/export',
     requireAuth,
+    requireScope('tickets:read'),
     requireRoles('admin'),
     (req: AuthenticatedRequest, res) => {
       const db = loadDb();
